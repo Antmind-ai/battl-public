@@ -3,16 +3,24 @@ import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { BUTTON_SHADOW_OFFSET, styles as screenStyles } from '../styles/index.styles';
 
-const SCANLINE_COUNT = 240;
-const SCANLINE_STEP = 3;
-const BATTERY_GRID_VERTICAL = 14;
-const BATTERY_GRID_HORIZONTAL = 5;
-const BUTTON_SHADOW_OFFSET = 5;
+const styles = screenStyles as Record<string, object>;
+
+const SCANLINE_STEP = 2;
+const BATTERY_GRID_VERTICAL = 10;
+const BATTERY_GRID_HORIZONTAL = 4;
 const BUTTON_SPRING = { damping: 14, stiffness: 280, mass: 0.6 };
+const QUALIFIED_ICON = ['01110', '12021', '12221', '01110', '01010'];
+
+const QUALIFIED_ICON_PALETTE: Record<string, string> = {
+  '0': 'transparent',
+  '1': '#7dff3a',
+  '2': '#051006',
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -22,13 +30,47 @@ function triggerImpact(style: Haptics.ImpactFeedbackStyle) {
   void Haptics.impactAsync(style).catch(() => {});
 }
 
+function PixelArt({
+  map,
+  palette,
+  pixelSize,
+}: {
+  map: string[];
+  palette: Record<string, string>;
+  pixelSize: number;
+}) {
+  return (
+    <View>
+      {map.map((row, rowIndex) => (
+        <View key={`row-${rowIndex}`} style={styles.pixelRow}>
+          {row.split('').map((cell, colIndex) => (
+            <View
+              key={`cell-${rowIndex}-${colIndex}`}
+              style={[
+                styles.pixelCell,
+                {
+                  width: pixelSize,
+                  height: pixelSize,
+                  backgroundColor: palette[cell] ?? 'transparent',
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const [fontsLoaded] = useFonts({
     Jersey10_400Regular,
   });
   const [batteryLevel, setBatteryLevel] = useState(0.0419);
   const [batteryState, setBatteryState] = useState(Battery.BatteryState.UNKNOWN);
+  const { height: windowHeight } = useWindowDimensions();
   const actionPressed = useSharedValue(0);
+  const howToPressed = useSharedValue(0);
 
   useEffect(() => {
     let mounted = true;
@@ -74,9 +116,11 @@ export default function HomeScreen() {
   }, []);
 
   const safeLevel = useMemo(() => clamp(batteryLevel, 0, 1), [batteryLevel]);
-  const isCharging = batteryState === Battery.BatteryState.CHARGING;
   const batteryFill = Math.max(safeLevel, 0.018);
+  const scanlineCount = useMemo(() => Math.ceil(windowHeight / SCANLINE_STEP) + 2, [windowHeight]);
   const accessPercent = `${(safeLevel * 100).toFixed(2)}%`;
+  const qualifiedText = 'YOU QUALIFIED!';
+  const accessMessage = 'ONLY THE LOWEST SURVIVE.';
   const actionFaceStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: actionPressed.value * BUTTON_SHADOW_OFFSET },
@@ -92,15 +136,24 @@ export default function HomeScreen() {
     ],
   }));
 
+  const howToFaceStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: howToPressed.value * BUTTON_SHADOW_OFFSET },
+      { translateY: howToPressed.value * BUTTON_SHADOW_OFFSET },
+    ],
+  }));
+
+  const howToShadowStyle = useAnimatedStyle(() => ({
+    opacity: 1 - howToPressed.value * 0.85,
+    transform: [
+      { scaleX: 1 - howToPressed.value * 0.04 },
+      { scaleY: 1 - howToPressed.value * 0.1 },
+    ],
+  }));
+
   if (!fontsLoaded) {
     return <View style={styles.loadingScreen} />;
   }
-
-  const batteryStatusText = isCharging
-    ? 'charging now - stay online'
-    : safeLevel <= 0.08
-      ? 'battery critical - welcome'
-      : 'power stable - stand by';
 
   const handleButtonPressIn = () => {
     triggerImpact(Haptics.ImpactFeedbackStyle.Heavy);
@@ -114,6 +167,18 @@ export default function HomeScreen() {
 
   const handleButtonPress = () => {};
 
+  const handleHowToPressIn = () => {
+    triggerImpact(Haptics.ImpactFeedbackStyle.Heavy);
+    howToPressed.value = withSpring(1, BUTTON_SPRING);
+  };
+
+  const handleHowToPressOut = () => {
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+    howToPressed.value = withSpring(0, BUTTON_SPRING);
+  };
+
+  const handleHowToPress = () => {};
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.mainColumn}>
@@ -126,79 +191,135 @@ export default function HomeScreen() {
           />
         </View>
 
-        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.topLabel}>
-          you qualified
+        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.topTagline}>
+          LOW POWER. HIGHER STAKES.
         </Text>
 
-        <View style={styles.batteryWrap}>
-          <View style={styles.batteryBody}>
-            {Array.from({ length: BATTERY_GRID_VERTICAL }).map((_, index) => (
-              <View
-                key={`vb-${index}`}
-                style={[
-                  styles.batteryVerticalLine,
-                  { left: `${((index + 1) / (BATTERY_GRID_VERTICAL + 1)) * 100}%` },
-                ]}
-              />
-            ))}
-            {Array.from({ length: BATTERY_GRID_HORIZONTAL }).map((_, index) => (
-              <View
-                key={`hb-${index}`}
-                style={[
-                  styles.batteryHorizontalLine,
-                  { top: `${((index + 1) / (BATTERY_GRID_HORIZONTAL + 1)) * 100}%` },
-                ]}
-              />
-            ))}
-
-            <View style={[styles.batteryFill, { width: `${batteryFill * 100}%` }]} />
+        <View style={styles.qualifiedPill}>
+          <View style={[styles.qualifiedEar, styles.qualifiedEarLeft]} />
+          <View style={[styles.qualifiedEar, styles.qualifiedEarRight]} />
+          <View style={styles.qualifiedIconWrap}>
+            <PixelArt map={QUALIFIED_ICON} palette={QUALIFIED_ICON_PALETTE} pixelSize={4} />
           </View>
-          <View style={styles.batteryTip}>
-            <View style={styles.batteryTipLine} />
-            <View style={styles.batteryTipLine} />
-            <View style={styles.batteryTipLine} />
+          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.qualifiedText}>
+            {qualifiedText}
+          </Text>
+        </View>
+
+        <View style={styles.batteryPanel}>
+          <View style={styles.batteryWrap}>
+            <View style={styles.batteryBody}>
+              {Array.from({ length: BATTERY_GRID_VERTICAL }).map((_, index) => (
+                <View
+                  key={`vb-${index}`}
+                  style={[
+                    styles.batteryVerticalLine,
+                    { left: `${((index + 1) / (BATTERY_GRID_VERTICAL + 1)) * 100}%` },
+                  ]}
+                />
+              ))}
+              {Array.from({ length: BATTERY_GRID_HORIZONTAL }).map((_, index) => (
+                <View
+                  key={`hb-${index}`}
+                  style={[
+                    styles.batteryHorizontalLine,
+                    { top: `${((index + 1) / (BATTERY_GRID_HORIZONTAL + 1)) * 100}%` },
+                  ]}
+                />
+              ))}
+
+              <View style={[styles.batteryFill, { width: `${batteryFill * 100}%` }]} />
+            </View>
+            <View style={styles.batteryTip}>
+              <View style={styles.batteryTipLine} />
+              <View style={styles.batteryTipLine} />
+              <View style={styles.batteryTipLine} />
+            </View>
+          </View>
+
+          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.percentText}>
+            {accessPercent}
+          </Text>
+          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.powerRemainingText}>
+            POWER REMAINING
+          </Text>
+        </View>
+
+        <View style={styles.accessPanel}>
+          <View style={styles.accessCopy}>
+            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelTitle}>
+              ACCESS GRANTED
+            </Text>
+            <View style={styles.accessPanelDivider} />
+            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelText}>
+              {accessMessage}
+            </Text>
+          </View>
+
+          <View style={styles.operatorSpriteWrap}>
+            <Image
+              source={require('../assets/splash-character.webp')}
+              style={styles.operatorImage}
+              contentFit="contain"
+              transition={0}
+            />
           </View>
         </View>
 
-        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessGranted}>
-          ACCESS GRANTED:
-        </Text>
-        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.percentText}>
-          {accessPercent}
-        </Text>
-        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.statusText}>
-          {batteryStatusText}
-        </Text>
+        <View style={styles.bottomButtonsDock}>
+          <View style={styles.actionButtonWrapper}>
+            <Animated.View style={[styles.actionButtonShadow, actionShadowStyle]} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Enter Game"
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+              onPress={handleButtonPress}
+              style={styles.actionButtonPressable}
+              android_ripple={null}
+            >
+              <Animated.View style={[styles.actionButtonFace, actionFaceStyle]}>
+                <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.actionButtonText}>
+                  {'> ENTER GAME <'}
+                </Text>
+              </Animated.View>
+            </Pressable>
+          </View>
 
-        <View style={styles.actionButtonWrapper}>
-          <Animated.View style={[styles.actionButtonShadow, actionShadowStyle]} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Enter Game"
-            onPressIn={handleButtonPressIn}
-            onPressOut={handleButtonPressOut}
-            onPress={handleButtonPress}
-            style={styles.actionButtonPressable}
-            android_ripple={null}
-          >
-            <Animated.View style={[styles.actionButtonFace, actionFaceStyle]}>
-              <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.actionButtonText}>
-                ENTER GAME
-              </Text>
-            </Animated.View>
-          </Pressable>
+          <View style={[styles.actionButtonWrapper, styles.howToButtonWrapper]}>
+            <Animated.View style={[styles.actionButtonShadow, styles.howToButtonShadow, howToShadowStyle]} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="How to play"
+              onPressIn={handleHowToPressIn}
+              onPressOut={handleHowToPressOut}
+              onPress={handleHowToPress}
+              style={styles.actionButtonPressable}
+              android_ripple={null}
+            >
+              <Animated.View style={[styles.actionButtonFace, styles.howToButtonFace, howToFaceStyle]}>
+                <Text
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1}
+                  style={[styles.actionButtonText, styles.howToButtonText]}
+                >
+                  HOW TO PLAY
+                </Text>
+              </Animated.View>
+            </Pressable>
+          </View>
         </View>
       </View>
 
       <View pointerEvents="none" style={styles.scanlineOverlay}>
-        {Array.from({ length: SCANLINE_COUNT }).map((_, index) => (
+        {Array.from({ length: scanlineCount }).map((_, index) => (
           <View
             key={`scan-${index}`}
             style={[
               styles.scanline,
               {
                 top: index * SCANLINE_STEP,
-                opacity: index % 2 === 0 ? 0.28 : 0.12,
+                opacity: index % 2 === 0 ? 0.22 : 0.08,
               },
             ]}
           />
@@ -211,190 +332,3 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#030604',
-  },
-  loadingScreen: {
-    flex: 1,
-    backgroundColor: '#030604',
-  },
-  mainColumn: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 26,
-    paddingTop: 10,
-    gap: 12,
-    position: 'relative',
-    zIndex: 2,
-  },
-  logoWrap: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  logoImage: {
-    width: 176,
-    height: 56,
-  },
-  topLabel: {
-    fontFamily: 'Jersey10_400Regular',
-    color: '#12de55',
-    fontSize: 28,
-    letterSpacing: 0.8,
-    marginBottom: 10,
-    textShadowColor: 'rgba(18, 222, 85, 0.32)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 7,
-  },
-  batteryWrap: {
-    width: '92%',
-    maxWidth: 320,
-    height: 104,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  batteryBody: {
-    flex: 1,
-    height: '100%',
-    borderColor: '#f4f4f4',
-    borderWidth: 6,
-    backgroundColor: '#050505',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  batteryTip: {
-    width: 16,
-    height: 52,
-    borderTopWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 6,
-    borderColor: '#f4f4f4',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    backgroundColor: '#0c0c0c',
-  },
-  batteryTipLine: {
-    width: '64%',
-    height: 2,
-    backgroundColor: '#bbbbbb',
-  },
-  batteryVerticalLine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  batteryHorizontalLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  batteryFill: {
-    position: 'absolute',
-    top: 10,
-    bottom: 10,
-    left: 12,
-    backgroundColor: '#ff2b32',
-  },
-  accessGranted: {
-    fontFamily: 'Jersey10_400Regular',
-    color: '#12de55',
-    fontSize: 30,
-    letterSpacing: 0.6,
-    marginTop: 12,
-    textShadowColor: 'rgba(18, 222, 85, 0.24)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 7,
-  },
-  percentText: {
-    fontFamily: 'Jersey10_400Regular',
-    color: '#22ff51',
-    fontSize: 84,
-    letterSpacing: 1.8,
-    marginTop: 4,
-    textShadowColor: 'rgba(34, 255, 81, 0.3)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  statusText: {
-    fontFamily: 'Jersey10_400Regular',
-    color: '#12de55',
-    fontSize: 22,
-    marginTop: -2,
-    textAlign: 'center',
-    textShadowColor: 'rgba(18, 222, 85, 0.2)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
-  },
-  actionButtonWrapper: {
-    width: '96%',
-    maxWidth: 360,
-    marginTop: 24,
-    paddingRight: BUTTON_SHADOW_OFFSET,
-    paddingBottom: BUTTON_SHADOW_OFFSET,
-  },
-  actionButtonShadow: {
-    position: 'absolute',
-    top: BUTTON_SHADOW_OFFSET,
-    left: BUTTON_SHADOW_OFFSET,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#7e6138',
-    borderRadius: 20,
-  },
-  actionButtonPressable: {
-    width: '100%',
-  },
-  actionButtonFace: {
-    width: '100%',
-    borderWidth: 2,
-    borderColor: '#a9834c',
-    borderRadius: 20,
-    backgroundColor: '#e6dcc2',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButtonText: {
-    fontFamily: 'Jersey10_400Regular',
-    color: '#5d4120',
-    fontSize: 24,
-    lineHeight: 22,
-    letterSpacing: 1,
-    textAlign: 'center',
-    textShadowColor: 'rgba(255, 255, 255, 0.35)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 3,
-  },
-  scanlineOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
-  },
-  scanline: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: '#000000',
-  },
-  phosphorTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6, 18, 11, 0.08)',
-    zIndex: 1,
-  },
-  vignette: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.08)',
-    zIndex: 1,
-  },
-});
