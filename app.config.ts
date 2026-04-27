@@ -39,7 +39,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     output: 'static',
     favicon: './assets/favicon.png',
   },
-  plugins: ['./plugins/withAndroidFixedFontScale', 'expo-font', 'expo-router'],
+  plugins: [
+    './plugins/withAndroidFixedFontScale',
+    'expo-font',
+    'expo-image',
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#000000',
+        image: './assets/splash-icon.png',
+        imageWidth: 100,
+      },
+    ],
+    'expo-router',
+  ],
   experiments: {
     typedRoutes: true,
     reactCompiler: false,

@@ -1,8 +1,10 @@
 import { Jersey10_400Regular, useFonts } from '@expo-google-fonts/jersey-10';
 import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 const SCANLINE_COUNT = 240;
@@ -115,6 +117,15 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.mainColumn}>
+        <View style={styles.logoWrap}>
+          <Image
+            source={require('../assets/logo.webp')}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={120}
+          />
+        </View>
+
         <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.topLabel}>
           you qualified
         </Text>
@@ -212,17 +223,29 @@ const styles = StyleSheet.create({
   },
   mainColumn: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: 26,
-    gap: 14,
+    paddingTop: 10,
+    gap: 12,
+    position: 'relative',
+    zIndex: 2,
+  },
+  logoWrap: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  logoImage: {
+    width: 176,
+    height: 56,
   },
   topLabel: {
     fontFamily: 'Jersey10_400Regular',
     color: '#12de55',
     fontSize: 28,
     letterSpacing: 0.8,
-    marginBottom: 22,
+    marginBottom: 10,
     textShadowColor: 'rgba(18, 222, 85, 0.32)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 7,
@@ -355,6 +378,7 @@ const styles = StyleSheet.create({
   },
   scanlineOverlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   scanline: {
     position: 'absolute',
@@ -366,9 +390,11 @@ const styles = StyleSheet.create({
   phosphorTint: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(6, 18, 11, 0.08)',
+    zIndex: 1,
   },
   vignette: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    zIndex: 1,
   },
 });
