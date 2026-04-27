@@ -11,11 +11,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   description: 'Battl is created by Antmind Ventures Private Limited.',
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'dark',
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
-    backgroundColor: '#F9F5F0',
+    backgroundColor: '#000000',
   },
   ios: {
     supportsTablet: false,
@@ -23,13 +23,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     splash: {
       image: './assets/splash-icon.png',
       resizeMode: 'contain',
-      backgroundColor: '#F9F5F0',
+      backgroundColor: '#000000',
     },
   },
   android: {
+    backgroundColor: '#000000',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#ffffff',
+      backgroundColor: '#000000',
     },
     package: 'ai.antmind.battl',
     predictiveBackGestureEnabled: false,
@@ -38,7 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     output: 'static',
     favicon: './assets/favicon.png',
   },
-  plugins: ['expo-router'],
+  plugins: ['./plugins/withAndroidFixedFontScale', 'expo-font', 'expo-router'],
   experiments: {
     typedRoutes: true,
     reactCompiler: false,
