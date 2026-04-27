@@ -1,5 +1,6 @@
 import { Jersey10_400Regular, useFonts } from '@expo-google-fonts/jersey-10';
 import * as Battery from 'expo-battery';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
@@ -13,14 +14,8 @@ const styles = screenStyles as Record<string, object>;
 const SCANLINE_STEP = 2;
 const BATTERY_GRID_VERTICAL = 10;
 const BATTERY_GRID_HORIZONTAL = 4;
+const BATTERY_POLL_INTERVAL_MS = 1500;
 const BUTTON_SPRING = { damping: 14, stiffness: 280, mass: 0.6 };
-const QUALIFIED_ICON = ['01110', '12021', '12221', '01110', '01010'];
-
-const QUALIFIED_ICON_PALETTE: Record<string, string> = {
-  '0': 'transparent',
-  '1': '#7dff3a',
-  '2': '#051006',
-};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -30,44 +25,11 @@ function triggerImpact(style: Haptics.ImpactFeedbackStyle) {
   void Haptics.impactAsync(style).catch(() => {});
 }
 
-function PixelArt({
-  map,
-  palette,
-  pixelSize,
-}: {
-  map: string[];
-  palette: Record<string, string>;
-  pixelSize: number;
-}) {
-  return (
-    <View>
-      {map.map((row, rowIndex) => (
-        <View key={`row-${rowIndex}`} style={styles.pixelRow}>
-          {row.split('').map((cell, colIndex) => (
-            <View
-              key={`cell-${rowIndex}-${colIndex}`}
-              style={[
-                styles.pixelCell,
-                {
-                  width: pixelSize,
-                  height: pixelSize,
-                  backgroundColor: palette[cell] ?? 'transparent',
-                },
-              ]}
-            />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
 export default function HomeScreen() {
   const [fontsLoaded] = useFonts({
     Jersey10_400Regular,
   });
   const [batteryLevel, setBatteryLevel] = useState(0.0419);
-  const [batteryState, setBatteryState] = useState(Battery.BatteryState.UNKNOWN);
   const { height: windowHeight } = useWindowDimensions();
   const actionPressed = useSharedValue(0);
   const howToPressed = useSharedValue(0);
@@ -77,10 +39,7 @@ export default function HomeScreen() {
 
     const hydrateBattery = async () => {
       try {
-        const [level, state] = await Promise.all([
-          Battery.getBatteryLevelAsync(),
-          Battery.getBatteryStateAsync(),
-        ]);
+        const level = await Battery.getBatteryLevelAsync();
 
         if (!mounted) {
           return;
@@ -89,8 +48,6 @@ export default function HomeScreen() {
         if (Number.isFinite(level) && level >= 0) {
           setBatteryLevel(clamp(level, 0, 1));
         }
-
-        setBatteryState(state);
       } catch {
         // Keep fallback values if battery APIs are temporarily unavailable.
       }
@@ -98,20 +55,35 @@ export default function HomeScreen() {
 
     hydrateBattery();
 
+    const pollBatteryLevel = async () => {
+      try {
+        const level = await Battery.getBatteryLevelAsync();
+        if (!mounted) {
+          return;
+        }
+
+        if (Number.isFinite(level) && level >= 0) {
+          setBatteryLevel(clamp(level, 0, 1));
+        }
+      } catch {
+        // Keep current battery UI values if polling is temporarily unavailable.
+      }
+    };
+
+    const batteryPollInterval = setInterval(() => {
+      void pollBatteryLevel();
+    }, BATTERY_POLL_INTERVAL_MS);
+
     const levelSubscription = Battery.addBatteryLevelListener(({ batteryLevel: level }) => {
       if (Number.isFinite(level) && level >= 0) {
         setBatteryLevel(clamp(level, 0, 1));
       }
     });
 
-    const stateSubscription = Battery.addBatteryStateListener(({ batteryState: state }) => {
-      setBatteryState(state);
-    });
-
     return () => {
       mounted = false;
+      clearInterval(batteryPollInterval);
       levelSubscription.remove();
-      stateSubscription.remove();
     };
   }, []);
 
@@ -120,7 +92,7 @@ export default function HomeScreen() {
   const scanlineCount = useMemo(() => Math.ceil(windowHeight / SCANLINE_STEP) + 2, [windowHeight]);
   const accessPercent = `${(safeLevel * 100).toFixed(2)}%`;
   const qualifiedText = 'YOU QUALIFIED!';
-  const accessMessage = 'ONLY THE LOWEST SURVIVE.';
+  const accessMessage = 'ONLY THE LOWEST\nSURVIVE.';
   const actionFaceStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: actionPressed.value * BUTTON_SHADOW_OFFSET },
@@ -165,7 +137,9 @@ export default function HomeScreen() {
     actionPressed.value = withSpring(0, BUTTON_SPRING);
   };
 
-  const handleButtonPress = () => {};
+  const handleButtonPress = () => {
+    router.push('/game');
+  };
 
   const handleHowToPressIn = () => {
     triggerImpact(Haptics.ImpactFeedbackStyle.Heavy);
@@ -191,78 +165,78 @@ export default function HomeScreen() {
           />
         </View>
 
-        <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.topTagline}>
-          LOW POWER. HIGHER STAKES.
-        </Text>
-
-        <View style={styles.qualifiedPill}>
-          <View style={[styles.qualifiedEar, styles.qualifiedEarLeft]} />
-          <View style={[styles.qualifiedEar, styles.qualifiedEarRight]} />
-          <View style={styles.qualifiedIconWrap}>
-            <PixelArt map={QUALIFIED_ICON} palette={QUALIFIED_ICON_PALETTE} pixelSize={4} />
-          </View>
-          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.qualifiedText}>
-            {qualifiedText}
-          </Text>
-        </View>
-
-        <View style={styles.batteryPanel}>
-          <View style={styles.batteryWrap}>
-            <View style={styles.batteryBody}>
-              {Array.from({ length: BATTERY_GRID_VERTICAL }).map((_, index) => (
-                <View
-                  key={`vb-${index}`}
-                  style={[
-                    styles.batteryVerticalLine,
-                    { left: `${((index + 1) / (BATTERY_GRID_VERTICAL + 1)) * 100}%` },
-                  ]}
-                />
-              ))}
-              {Array.from({ length: BATTERY_GRID_HORIZONTAL }).map((_, index) => (
-                <View
-                  key={`hb-${index}`}
-                  style={[
-                    styles.batteryHorizontalLine,
-                    { top: `${((index + 1) / (BATTERY_GRID_HORIZONTAL + 1)) * 100}%` },
-                  ]}
-                />
-              ))}
-
-              <View style={[styles.batteryFill, { width: `${batteryFill * 100}%` }]} />
+        <View style={styles.centerCluster}>
+          <View style={styles.batteryPanel}>
+            <View style={styles.qualifiedPill}>
+              <View style={[styles.qualifiedEar, styles.qualifiedEarLeft]} />
+              <View style={[styles.qualifiedEar, styles.qualifiedEarRight]} />
+              <Text allowFontScaling={false} maxFontSizeMultiplier={1} numberOfLines={1} style={styles.qualifiedText}>
+                {qualifiedText}
+              </Text>
             </View>
-            <View style={styles.batteryTip}>
-              <View style={styles.batteryTipLine} />
-              <View style={styles.batteryTipLine} />
-              <View style={styles.batteryTipLine} />
+
+            <View style={styles.batteryWrap}>
+              <View style={styles.batteryBody}>
+                {Array.from({ length: BATTERY_GRID_VERTICAL }).map((_, index) => (
+                  <View
+                    key={`vb-${index}`}
+                    style={[
+                      styles.batteryVerticalLine,
+                      { left: `${((index + 1) / (BATTERY_GRID_VERTICAL + 1)) * 100}%` },
+                    ]}
+                  />
+                ))}
+                {Array.from({ length: BATTERY_GRID_HORIZONTAL }).map((_, index) => (
+                  <View
+                    key={`hb-${index}`}
+                    style={[
+                      styles.batteryHorizontalLine,
+                      { top: `${((index + 1) / (BATTERY_GRID_HORIZONTAL + 1)) * 100}%` },
+                    ]}
+                  />
+                ))}
+
+                <View style={[styles.batteryFill, { width: `${batteryFill * 100}%` }]} />
+              </View>
+              <View style={styles.batteryTip}>
+                <View style={styles.batteryTipLine} />
+                <View style={styles.batteryTipLine} />
+                <View style={styles.batteryTipLine} />
+              </View>
             </View>
-          </View>
 
-          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.percentText}>
-            {accessPercent}
-          </Text>
-          <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.powerRemainingText}>
-            POWER REMAINING
-          </Text>
-        </View>
-
-        <View style={styles.accessPanel}>
-          <View style={styles.accessCopy}>
-            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelTitle}>
-              ACCESS GRANTED
+            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.percentText}>
+              {accessPercent}
             </Text>
-            <View style={styles.accessPanelDivider} />
-            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelText}>
-              {accessMessage}
+            <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.powerRemainingText}>
+              POWER REMAINING
             </Text>
           </View>
 
-          <View style={styles.operatorSpriteWrap}>
-            <Image
-              source={require('../assets/splash-character.webp')}
-              style={styles.operatorImage}
-              contentFit="contain"
-              transition={0}
-            />
+          <View style={styles.accessPanel}>
+            <View style={styles.accessCopy}>
+              <Text
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1}
+                numberOfLines={1}
+                style={styles.accessPanelTitle}
+              >
+                ACCESS GRANTED
+              </Text>
+              <View style={styles.accessPanelDivider} />
+              <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelText}>
+                {accessMessage}
+              </Text>
+            </View>
+
+            <View style={styles.operatorSpriteWrap}>
+              <Image
+                source={require('../assets/splash-character.webp')}
+                style={styles.operatorImage}
+                contentFit="contain"
+                transition={0}
+              />
+            </View>
           </View>
         </View>
 
@@ -279,7 +253,12 @@ export default function HomeScreen() {
               android_ripple={null}
             >
               <Animated.View style={[styles.actionButtonFace, actionFaceStyle]}>
-                <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.actionButtonText}>
+                <Text
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1}
+                  numberOfLines={1}
+                  style={styles.actionButtonText}
+                >
                   {'> ENTER GAME <'}
                 </Text>
               </Animated.View>
@@ -301,6 +280,7 @@ export default function HomeScreen() {
                 <Text
                   allowFontScaling={false}
                   maxFontSizeMultiplier={1}
+                  numberOfLines={1}
                   style={[styles.actionButtonText, styles.howToButtonText]}
                 >
                   HOW TO PLAY
