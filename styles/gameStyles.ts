@@ -15,6 +15,9 @@ export const styles = StyleSheet.create({
     backgroundColor: '#010906',
     overflow: 'hidden',
   },
+  stageBlurTarget: {
+    flex: 1,
+  },
   ambientGlow: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(6, 30, 12, 0.2)',

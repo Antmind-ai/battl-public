@@ -1,11 +1,13 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { type RefObject } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 type PixelNavbarProps = {
   selectedIndex: number;
   onSelect: (index: number) => void;
+  blurTarget?: RefObject<View | null>;
 };
 
 const NAV_ITEMS = [
@@ -15,7 +17,9 @@ const NAV_ITEMS = [
   { key: 'menu', icon: 'menu' },
 ] as const;
 
-export function PixelNavbar({ selectedIndex, onSelect }: PixelNavbarProps) {
+export function PixelNavbar({ selectedIndex, onSelect, blurTarget }: PixelNavbarProps) {
+  const isAndroidBlurEnabled = Platform.OS === 'android' && !!blurTarget;
+
   const handleSelect = (index: number) => {
     void Haptics.selectionAsync().catch(() => {});
     onSelect(index);
@@ -52,7 +56,8 @@ export function PixelNavbar({ selectedIndex, onSelect }: PixelNavbarProps) {
       <BlurView
         tint="dark"
         intensity={Platform.OS === 'ios' ? 62 : 90}
-        experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+        blurMethod={isAndroidBlurEnabled ? 'dimezisBlurView' : undefined}
+        blurTarget={isAndroidBlurEnabled ? blurTarget : undefined}
         style={styles.blurShell}
       >
         <View style={styles.blurOverlay} />

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { Direction } from './gameAssets';
@@ -5,6 +6,7 @@ import type { Direction } from './gameAssets';
 type MovementPadProps = {
   onDirectionPressIn: (direction: Direction) => void;
   onDirectionPressOut: () => void;
+  onCenterPress: () => void;
 };
 
 type DirectionButton = {
@@ -19,24 +21,25 @@ const DIRECTION_BUTTONS: DirectionButton[] = [
   { direction: 'bottom', label: 'Move down' },
 ];
 
-function PixelArrow({ direction, pressed }: { direction: Direction; pressed: boolean }) {
-  const rotation = direction === 'top' ? '0deg' : direction === 'right' ? '90deg' : direction === 'bottom' ? '180deg' : '-90deg';
+const ARROW_ICON = require('../../assets/game/icons/arrow.webp');
 
-  const baseColor = pressed ? '#94FF9B' : '#59F56D';
-  const bgColor = pressed ? '#0A2810' : '#030E07';
+function PixelArrow({ direction, pressed }: { direction: Direction; pressed: boolean }) {
+  const rotation = direction === 'right' ? '0deg' : direction === 'bottom' ? '90deg' : direction === 'left' ? '180deg' : '-90deg';
 
   return (
-    <View style={[{ transform: [{ rotate: rotation }] }, styles.arrowContainer]}>
-      {/* Sliced triangle */}
-      <View style={[styles.arrowTriangle, { borderBottomColor: baseColor }]} />
-      {/* Slices to create the layered chevrons */}
-      <View style={[styles.arrowSlice, { top: 9, backgroundColor: bgColor }]} />
-      <View style={[styles.arrowSlice, { top: 15, backgroundColor: bgColor }]} />
-    </View>
+    <Image
+      source={ARROW_ICON}
+      contentFit="contain"
+      style={[
+        styles.arrowImage,
+        { transform: [{ rotate: rotation }] },
+        pressed ? styles.arrowImagePressed : null,
+      ]}
+    />
   );
 }
 
-export function MovementPad({ onDirectionPressIn, onDirectionPressOut }: MovementPadProps) {
+export function MovementPad({ onDirectionPressIn, onDirectionPressOut, onCenterPress }: MovementPadProps) {
   return (
     <View style={styles.padFrame}>
       {/* Background blurs tailored nicely to the core shapes - mimicking a glass cutout */}
@@ -59,15 +62,15 @@ export function MovementPad({ onDirectionPressIn, onDirectionPressOut }: Movemen
         <View style={[styles.innerCorner, { left: 52, top: 106 }]} />
         <View style={[styles.innerCorner, { left: 106, top: 106 }]} />
 
-        {/* Texture detail: scanlines */}
-        <View pointerEvents="none" style={styles.scanlineOne} />
-        <View pointerEvents="none" style={styles.scanlineTwo} />
-        <View pointerEvents="none" style={styles.scanlineThree} />
-
         {/* Center Deadzone Circle with symbol */}
-        <View pointerEvents="none" style={styles.centerDeadZone}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Reset view"
+          onPress={onCenterPress}
+          style={({ pressed }) => [styles.centerDeadZone, pressed ? styles.centerDeadZonePressed : null]}
+        >
           <View style={styles.centerDot} />
-        </View>
+        </Pressable>
 
         {/* Interactive Buttons */}
         {DIRECTION_BUTTONS.map((button) => (
@@ -77,7 +80,6 @@ export function MovementPad({ onDirectionPressIn, onDirectionPressOut }: Movemen
             accessibilityLabel={button.label}
             onPressIn={() => onDirectionPressIn(button.direction)}
             onPressOut={onDirectionPressOut}
-            onTouchEnd={onDirectionPressOut}
             style={({ pressed }) => [
               styles.pressableArea,
               button.direction === 'top' && { top: 2, left: 54, width: 52, height: 50, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
@@ -188,21 +190,6 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: '#59F56D',
   },
-  scanlineOne: {
-    position: 'absolute',
-    left: 12, right: 12, top: 40, height: 1,
-    backgroundColor: 'rgba(118, 255, 128, 0.08)',
-  },
-  scanlineTwo: {
-    position: 'absolute',
-    left: 12, right: 12, top: 80, height: 1,
-    backgroundColor: 'rgba(118, 255, 128, 0.1)',
-  },
-  scanlineThree: {
-    position: 'absolute',
-    left: 12, right: 12, top: 120, height: 1,
-    backgroundColor: 'rgba(118, 255, 128, 0.08)',
-  },
   centerDeadZone: {
     position: 'absolute',
     left: 62, top: 62, width: 36, height: 36,
@@ -212,6 +199,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(1, 10, 5, 0.94)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  centerDeadZonePressed: {
+    backgroundColor: 'rgba(6, 20, 10, 0.96)',
   },
   centerDot: {
     width: 6, height: 6,
@@ -227,19 +217,12 @@ const styles = StyleSheet.create({
   pressableAreaActive: {
     backgroundColor: 'rgba(10, 40, 16, 0.8)',
   },
-  arrowContainer: {
-    width: 28, height: 26,
-    alignItems: 'center', justifyContent: 'center',
+  arrowImage: {
+    width: 28,
+    height: 22,
+    opacity: 0.92,
   },
-  arrowTriangle: {
-    width: 0, height: 0,
-    borderLeftWidth: 14, borderRightWidth: 14,
-    borderBottomWidth: 18,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
-  },
-  arrowSlice: {
-    position: 'absolute',
-    left: 0, right: 0,
-    height: 2,
+  arrowImagePressed: {
+    opacity: 1,
   },
 });
