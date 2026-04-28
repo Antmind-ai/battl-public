@@ -1,6 +1,13 @@
 import { ConfigContext, ExpoConfig } from 'expo/config';
 import packageJson from './package.json';
 
+const DEFAULT_MINIMUM_QUALIFIED_BATTERY_PERCENTAGE = 75;
+const RAW_MINIMUM_QUALIFIED_BATTERY_PERCENTAGE = process.env.BATTL_MINIMUM_QUALIFIED_BATTERY_PERCENTAGE ?? '75';
+const parsedMinimumQualifiedBatteryPercentage = Number.parseInt(RAW_MINIMUM_QUALIFIED_BATTERY_PERCENTAGE, 10);
+const minimumQualifiedBatteryPercentage = Number.isFinite(parsedMinimumQualifiedBatteryPercentage)
+  ? Math.min(Math.max(parsedMinimumQualifiedBatteryPercentage, 0), 100)
+  : DEFAULT_MINIMUM_QUALIFIED_BATTERY_PERCENTAGE;
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Battl',
@@ -43,6 +50,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     './plugins/withAndroidFixedFontScale',
     'expo-font',
     'expo-image',
+    'expo-secure-store',
     [
       'expo-splash-screen',
       {
@@ -60,5 +68,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     router: {},
     creator: 'Antmind Ventures Private Limited',
+    minimumQualifiedBatteryPercentage,
   },
 });

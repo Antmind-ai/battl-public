@@ -8,6 +8,11 @@ import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { BUTTON_SHADOW_OFFSET, styles as screenStyles } from '../styles/index.styles';
+import {
+  isPlayerQualifiedByBattery,
+  MINIMUM_QUALIFIED_BATTERY_PERCENTAGE,
+} from '../utils/batteryQualification';
+import { getOnboardingProfile } from '../utils/onboardingStorage';
 
 const styles = screenStyles as Record<string, object>;
 
@@ -29,7 +34,9 @@ export default function HomeScreen() {
   const [fontsLoaded] = useFonts({
     Jersey10_400Regular,
   });
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState(0.0419);
+  const [batteryState, setBatteryState] = useState(Battery.BatteryState.UNKNOWN);
   const { height: windowHeight } = useWindowDimensions();
   const actionPressed = useSharedValue(0);
   const howToPressed = useSharedValue(0);
@@ -37,13 +44,38 @@ export default function HomeScreen() {
   useEffect(() => {
     let mounted = true;
 
+    const hydrateOnboarding = async () => {
+      const storedProfile = await getOnboardingProfile();
+
+      if (!mounted) {
+        return;
+      }
+
+      setHasCompletedOnboarding(Boolean(storedProfile?.hasCompletedOnboarding));
+    };
+
+    void hydrateOnboarding();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
     const hydrateBattery = async () => {
       try {
-        const level = await Battery.getBatteryLevelAsync();
+        const [level, nextState] = await Promise.all([
+          Battery.getBatteryLevelAsync(),
+          Battery.getBatteryStateAsync(),
+        ]);
 
         if (!mounted) {
           return;
         }
+
+        setBatteryState(nextState);
 
         if (Number.isFinite(level) && level >= 0) {
           setBatteryLevel(clamp(level, 0, 1));
@@ -57,10 +89,16 @@ export default function HomeScreen() {
 
     const pollBatteryLevel = async () => {
       try {
-        const level = await Battery.getBatteryLevelAsync();
+        const [level, nextState] = await Promise.all([
+          Battery.getBatteryLevelAsync(),
+          Battery.getBatteryStateAsync(),
+        ]);
+
         if (!mounted) {
           return;
         }
+
+        setBatteryState(nextState);
 
         if (Number.isFinite(level) && level >= 0) {
           setBatteryLevel(clamp(level, 0, 1));
@@ -80,19 +118,32 @@ export default function HomeScreen() {
       }
     });
 
+    const stateSubscription = Battery.addBatteryStateListener(({ batteryState: nextState }) => {
+      setBatteryState(nextState);
+    });
+
     return () => {
       mounted = false;
       clearInterval(batteryPollInterval);
       levelSubscription.remove();
+      stateSubscription.remove();
     };
   }, []);
 
   const safeLevel = useMemo(() => clamp(batteryLevel, 0, 1), [batteryLevel]);
+  const isQualified = useMemo(
+    () => isPlayerQualifiedByBattery(safeLevel, batteryState),
+    [batteryState, safeLevel]
+  );
   const batteryFill = Math.max(safeLevel, 0.018);
   const scanlineCount = useMemo(() => Math.ceil(windowHeight / SCANLINE_STEP) + 2, [windowHeight]);
   const accessPercent = `${(safeLevel * 100).toFixed(2)}%`;
-  const qualifiedText = 'YOU QUALIFIED!';
-  const accessMessage = 'ONLY THE LOWEST\nSURVIVE.';
+  const qualifiedText = isQualified ? 'YOU QUALIFIED!' : 'NOT QUALIFIED';
+  const accessTitle = isQualified ? 'ACCESS GRANTED' : 'ACCESS DENIED';
+  const accessMessage = isQualified
+    ? `BATTERY BELOW ${MINIMUM_QUALIFIED_BATTERY_PERCENTAGE}%\nUNPLUGGED TO SURVIVE.`
+    : `BATTERY MUST STAY BELOW ${MINIMUM_QUALIFIED_BATTERY_PERCENTAGE}%\nAND NOT CHARGING.`;
+  const actionButtonLabel = hasCompletedOnboarding ? '> ENTER GAME <' : '> ENTER GAME <';
   const actionFaceStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: actionPressed.value * BUTTON_SHADOW_OFFSET },
@@ -128,17 +179,42 @@ export default function HomeScreen() {
   }
 
   const handleButtonPressIn = () => {
+    if (!isQualified) {
+      return;
+    }
+
     triggerImpact(Haptics.ImpactFeedbackStyle.Heavy);
     actionPressed.value = withSpring(1, BUTTON_SPRING);
   };
 
   const handleButtonPressOut = () => {
+    if (!isQualified) {
+      return;
+    }
+
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     actionPressed.value = withSpring(0, BUTTON_SPRING);
   };
 
   const handleButtonPress = () => {
-    router.push('/game');
+    if (!isQualified) {
+      return;
+    }
+
+    const routePlayer = async () => {
+      const storedProfile = await getOnboardingProfile();
+
+      if (storedProfile?.hasCompletedOnboarding) {
+        setHasCompletedOnboarding(true);
+        router.replace('/game');
+        return;
+      }
+
+      setHasCompletedOnboarding(false);
+      router.push('/onboarding');
+    };
+
+    void routePlayer();
   };
 
   const handleHowToPressIn = () => {
@@ -219,12 +295,16 @@ export default function HomeScreen() {
                 allowFontScaling={false}
                 maxFontSizeMultiplier={1}
                 numberOfLines={1}
-                style={styles.accessPanelTitle}
+                style={[styles.accessPanelTitle, !isQualified && styles.accessPanelTitleDenied]}
               >
-                ACCESS GRANTED
+                {accessTitle}
               </Text>
               <View style={styles.accessPanelDivider} />
-              <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={styles.accessPanelText}>
+              <Text
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1}
+                style={[styles.accessPanelText, !isQualified && styles.accessPanelTextDenied]}
+              >
                 {accessMessage}
               </Text>
             </View>
@@ -242,24 +322,38 @@ export default function HomeScreen() {
 
         <View style={styles.bottomButtonsDock}>
           <View style={styles.actionButtonWrapper}>
-            <Animated.View style={[styles.actionButtonShadow, actionShadowStyle]} />
+            <Animated.View
+              style={[
+                styles.actionButtonShadow,
+                actionShadowStyle,
+                !isQualified && styles.actionButtonShadowDisabled,
+              ]}
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Enter Game"
+              accessibilityState={{ disabled: !isQualified }}
               onPressIn={handleButtonPressIn}
               onPressOut={handleButtonPressOut}
               onPress={handleButtonPress}
-              style={styles.actionButtonPressable}
+              disabled={!isQualified}
+              style={[styles.actionButtonPressable, !isQualified && styles.actionButtonPressableDisabled]}
               android_ripple={null}
             >
-              <Animated.View style={[styles.actionButtonFace, actionFaceStyle]}>
+              <Animated.View
+                style={[
+                  styles.actionButtonFace,
+                  actionFaceStyle,
+                  !isQualified && styles.actionButtonFaceDisabled,
+                ]}
+              >
                 <Text
                   allowFontScaling={false}
                   maxFontSizeMultiplier={1}
                   numberOfLines={1}
-                  style={styles.actionButtonText}
+                  style={[styles.actionButtonText, !isQualified && styles.actionButtonTextDisabled]}
                 >
-                  {'> ENTER GAME <'}
+                  {actionButtonLabel}
                 </Text>
               </Animated.View>
             </Pressable>

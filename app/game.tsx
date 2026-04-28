@@ -1,24 +1,26 @@
 import { Jersey10_400Regular, useFonts } from '@expo-google-fonts/jersey-10';
 import { Image } from 'expo-image';
 import { BlurTargetView } from 'expo-blur';
-import { Stack } from 'expo-router';
+import * as Battery from 'expo-battery';
+import { router, Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import {
   BackHandler,
   PanResponder,
-  Text,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CHARACTER_SPRITES, getRandomCharacterId, type Direction } from '../components/game/gameAssets';
+import { CHARACTER_SPRITES, getRandomCharacterId, type CharacterId, type Direction } from '../components/game/gameAssets';
 import { MovementPad } from '../components/game/MovementPad';
 import { PixelNavbar } from '../components/game/PixelNavbar';
 import { canPlacePlayer, createWorldObjects, getRandomSpawn, type Point } from '../components/game/worldLayout';
 import { styles as gameStyles } from '../styles/gameStyles';
+import { isPlayerQualifiedByBattery } from '../utils/batteryQualification';
+import { getOnboardingProfile } from '../utils/onboardingStorage';
 
 const styles = gameStyles as Record<string, object>;
 
@@ -29,6 +31,7 @@ const MAX_MAP_SCALE = 1.35;
 const MOVEMENT_SPEED_PX_PER_SEC = 300;
 const MAX_MOVEMENT_STEP_PX = 8;
 const WALK_FRAME_DURATION_MS = 115;
+const BATTERY_POLL_INTERVAL_MS = 1500;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -61,7 +64,7 @@ export default function GameScreen() {
     Jersey10_400Regular,
   });
 
-  const [characterId] = useState(() => getRandomCharacterId());
+  const [characterId, setCharacterId] = useState<CharacterId>(() => getRandomCharacterId());
   const [selectedTab, setSelectedTab] = useState(0);
   const [mapScale, setMapScale] = useState(1);
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
@@ -73,6 +76,8 @@ export default function GameScreen() {
   const { width, height } = useWindowDimensions();
 
   const [surfaceSize, setSurfaceSize] = useState({ width, height });
+  const [batteryLevel, setBatteryLevel] = useState(0.0419);
+  const [batteryState, setBatteryState] = useState(Battery.BatteryState.UNKNOWN);
 
   const panOffset = useRef({ x: 0, y: 0 });
   const dragStart = useRef({ x: 0, y: 0 });
@@ -88,6 +93,7 @@ export default function GameScreen() {
   const isPinchingRef = useRef(false);
   const playerPositionRef = useRef<Point | null>(null);
   const blurTargetRef = useRef<View | null>(null);
+  const hasForcedExitRef = useRef(false);
 
   const viewportWidth = surfaceSize.width || width;
   const viewportHeight = surfaceSize.height || height;
@@ -135,6 +141,30 @@ export default function GameScreen() {
   }, [playerPosition, playerSize, worldObjects]);
 
   const activePlayerSprite = CHARACTER_SPRITES[characterId][playerDirection][playerFrame];
+  const isQualified = useMemo(
+    () => isPlayerQualifiedByBattery(batteryLevel, batteryState),
+    [batteryLevel, batteryState]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const hydrateCharacter = async () => {
+      const storedProfile = await getOnboardingProfile();
+
+      if (!mounted || !storedProfile?.characterId) {
+        return;
+      }
+
+      setCharacterId(storedProfile.characterId);
+    };
+
+    void hydrateCharacter();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSurfaceLayout = useCallback((event: LayoutChangeEvent) => {
     const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
@@ -292,7 +322,7 @@ export default function GameScreen() {
     centerMapOnPlayer(currentPosition);
   }, [centerMapOnPlayer, stopDirectionalMove]);
 
-  usePreventRemove(true, () => {});
+  usePreventRemove(isQualified, () => {});
 
   useFocusEffect(
     useCallback(() => {
@@ -320,6 +350,85 @@ export default function GameScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const hydrateBattery = async () => {
+      try {
+        const [level, nextState] = await Promise.all([
+          Battery.getBatteryLevelAsync(),
+          Battery.getBatteryStateAsync(),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        setBatteryState(nextState);
+
+        if (Number.isFinite(level) && level >= 0) {
+          setBatteryLevel(clamp(level, 0, 1));
+        }
+      } catch {
+        // Keep current eligibility state when battery APIs are temporarily unavailable.
+      }
+    };
+
+    hydrateBattery();
+
+    const pollBattery = async () => {
+      try {
+        const [level, nextState] = await Promise.all([
+          Battery.getBatteryLevelAsync(),
+          Battery.getBatteryStateAsync(),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        setBatteryState(nextState);
+
+        if (Number.isFinite(level) && level >= 0) {
+          setBatteryLevel(clamp(level, 0, 1));
+        }
+      } catch {
+        // Keep current eligibility state when polling fails temporarily.
+      }
+    };
+
+    const batteryPollInterval = setInterval(() => {
+      void pollBattery();
+    }, BATTERY_POLL_INTERVAL_MS);
+
+    const levelSubscription = Battery.addBatteryLevelListener(({ batteryLevel: level }) => {
+      if (Number.isFinite(level) && level >= 0) {
+        setBatteryLevel(clamp(level, 0, 1));
+      }
+    });
+
+    const stateSubscription = Battery.addBatteryStateListener(({ batteryState: nextState }) => {
+      setBatteryState(nextState);
+    });
+
+    return () => {
+      mounted = false;
+      clearInterval(batteryPollInterval);
+      levelSubscription.remove();
+      stateSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isQualified || hasForcedExitRef.current) {
+      return;
+    }
+
+    hasForcedExitRef.current = true;
+    stopDirectionalMove();
+    router.replace('/');
+  }, [isQualified, stopDirectionalMove]);
 
   useEffect(() => {
     const clampedX = clamp(panOffset.current.x, bounds.minX, bounds.maxX);

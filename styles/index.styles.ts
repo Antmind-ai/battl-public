@@ -208,6 +208,9 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.7,
     textAlignVertical: 'center',
   },
+  accessPanelTitleDenied: {
+    color: '#b9c1c7',
+  },
   accessPanelDivider: {
     marginTop: 4,
     marginBottom: 6,
@@ -221,6 +224,9 @@ export const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 20,
     letterSpacing: 1.1,
+  },
+  accessPanelTextDenied: {
+    color: '#c4c8ce',
   },
   operatorSpriteWrap: {
     width: 82,
@@ -254,8 +260,14 @@ export const styles = StyleSheet.create({
     backgroundColor: '#224614',
     borderRadius: 16,
   },
+  actionButtonShadowDisabled: {
+    backgroundColor: '#202428',
+  },
   actionButtonPressable: {
     width: '100%',
+  },
+  actionButtonPressableDisabled: {
+    opacity: 0.92,
   },
   actionButtonFace: {
     width: '100%',
@@ -267,6 +279,10 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionButtonFaceDisabled: {
+    borderColor: '#6d757d',
+    backgroundColor: '#14181c',
   },
   actionButtonText: {
     fontFamily: 'Jersey10_400Regular',
@@ -280,6 +296,10 @@ export const styles = StyleSheet.create({
     textShadowColor: 'rgba(131, 246, 64, 0.24)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
+  },
+  actionButtonTextDisabled: {
+    color: '#8f979f',
+    textShadowColor: 'rgba(0, 0, 0, 0)',
   },
   howToButtonWrapper: {
     marginTop: 8,
